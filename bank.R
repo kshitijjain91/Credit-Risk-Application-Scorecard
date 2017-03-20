@@ -1,66 +1,96 @@
-
-##-----------------BFS Capstone Project---------------------##
+##--------------------------------------------------------BFS Capstone Project----------------------------------------------##
+library(caret)
+library(mass)
+library(car)
+library(caTools)
+library(sqldf)
 
 ##-----------------------DATA PREPARATION ------------------------##
 
-# Load Credit Bureau dataset in working directory 
+# Load Credit Bureau dataset 
 Credit_bureau <- read.csv("Credit Bureau_v1.csv")
+str(Credit_bureau)
+length(unique(Credit_bureau$Application.ID))
+which(duplicated(Credit_bureau$Application.ID))
 
 # Removing duplicates rows from credit bureau data
 Credit_bureau_1 <- Credit_bureau[!duplicated(Credit_bureau$Application.ID), ]
 
-# Loan Demographic dataset
+# Load Demographic data
 Demogs <- read.csv("Demogs_v1.csv")
+str(Demogs)
 
 # Removing duplicates rows from Demographics data
+length(unique(Demogs$Application.ID))
 Demogs_1 <- Demogs[!duplicated(Demogs$Application.ID), ]
 
 # Merging both the dataset by a common ID i.e "Application.ID"
 Credit_Demogs_merge_1 <- merge(Credit_bureau_1,Demogs_1,by="Application.ID")
+str(Credit_Demogs_merge_1)
+table(Credit_Demogs_merge_1$Performance.Tag.x, Credit_Demogs_merge_1$Performance.Tag.y)
+# the performance tags match perfectly
 
 
-# Creating new column to check performance tag of both column would be same i.e "Performance.Tag.x" and "Performance.Tag.y" should be same
-Credit_Demogs_merge_1$New<- ifelse(Credit_Demogs_merge_1$Performance.Tag.x==Credit_Demogs_merge_1$Performance.Tag.y,yes = "Y",no = "N")
-
-# Checking table of New column.
-table(Credit_Demogs_merge_1$New) # (It is cleared now that all the obsevations in both the columns are same, thus we can go ahead and remove any one column)
-#(Also, you can find that the total rows contain 71292 but the observation )
 # Removing "New" and "Performance.Tag.y" column from merged dataset
-Credit_Demogs_merge_2<-Credit_Demogs_merge_1[,-c(30:31)]
-
+Credit_Demogs_merge_2 <- Credit_Demogs_merge_1[, -30]
+str(Credit_Demogs_merge_2)
 
 # Now, let's check the summary 
 summary(Credit_Demogs_merge_2)
-# (From summary, you can see that the "Presence.of.open.home.loan" and "Outstanding.Balance" are having same number of NA's)
+sapply(Credit_Demogs_merge_2, function(x) sum(is.na(x)))
+# you can see that the "Presence.of.open.home.loan" and "Outstanding.Balance" are having same number of NA's = 272
 
-# So, Let's first check whether both the column contain same number of NA's are not 
-Check_NA <- subset(Credit_Demogs_merge_2,is.na(Credit_Demogs_merge_2$Avgas.CC.Utilization.in.last.12.months)& is.na(Credit_Demogs_merge_2$Presence.of.open.home.loan))
+
+# Let's first check whether both columns contain same number of NA's are not 
+
+Check_NA <- subset(Credit_Demogs_merge_2, is.na(Credit_Demogs_merge_2$Avgas.CC.Utilization.in.last.12.months)& is.na(Credit_Demogs_merge_2$Presence.of.open.home.loan))
+Check_NA
 #( So, yes, both the columns contain same number of NA's)
 
-#So,now let's remove these observation from merged data file and store it to "Credit_Demogs_merge_3"
+# So,now let's remove these observation from merged data file and store it to "Credit_Demogs_merge_3"
 Credit_Demogs_merge_3 <- subset(Credit_Demogs_merge_2,!is.na(Credit_Demogs_merge_2$Avgas.CC.Utilization.in.last.12.months)& !is.na(Credit_Demogs_merge_2$Presence.of.open.home.loan |Credit_Demogs_merge_2$Performance.Tag.x))
 
-#
-Credit_Demogs_merge_4 <- Credit_Demogs_merge_3[-which(Credit_Demogs_merge_3$Age<=0),]
+# Data cleaning
+summary(Credit_Demogs_merge_3)
 
-levels(Credit_Demogs_merge_4$Gender)[1] <-"M"
+## Detecting Outliers, NAs etc 
+# Age
+quantile(Credit_Demogs_merge_3$Age, probs = seq(0, 1, 0.01))
+Credit_Demogs_merge_3$Age[which(Credit_Demogs_merge_3$Age < 27)] <- 27
 
-levels(Credit_Demogs_merge_4$Marital.Status..at.the.time.of.application.)[1]<- "Married"
+# Gender
+summary(Credit_Demogs_merge_3$Gender)
+levels(Credit_Demogs_merge_3$Gender)[1] <-"M"
 
-levels(Credit_Demogs_merge_4$Profession)[1] <-"SAL"
+# Marital Status
+summary(Credit_Demogs_merge_3$Marital.Status..at.the.time.of.application.)
+levels(Credit_Demogs_merge_3$Marital.Status..at.the.time.of.application.)[1]<- "Married"
 
-table(Credit_Demogs_merge_4$No.of.dependents)
+# Profession
+summary(Credit_Demogs_merge_3$Profession)
+levels(Credit_Demogs_merge_3$Profession)[1] <-"SAL"
 
-Credit_Demogs_merge_4$No.of.dependents[is.na(Credit_Demogs_merge_4$No.of.dependents)]<-3
+# No of dependents
+summary(Credit_Demogs_merge_3$No.of.dependents)
+Credit_Demogs_merge_3$No.of.dependents[is.na(Credit_Demogs_merge_3$No.of.dependents)] <- 3
 
-Credit_Demogs_merge_5 <- subset(Credit_Demogs_merge_4, Income>0)
+# Income
+summary(Credit_Demogs_merge_3$Income)
+quantile(Credit_Demogs_merge_3$Income, probs=seq(0, 1, 0.01))
+Credit_Demogs_merge_3$Income[which(Credit_Demogs_merge_3$Income < 4.5)] <- 4.5
 
-levels(Credit_Demogs_merge_5$Education)[1] <- "Professional"
-levels(Credit_Demogs_merge_5$Type.of.residence)[1] <- "Rented"
 
-Credit_Demogs_merge_6 <- subset(Credit_Demogs_merge_5, !is.na(Credit_Demogs_merge_5$Performance.Tag.x))
+# Education
+summary(Credit_Demogs_merge_3$Education)
+levels(Credit_Demogs_merge_3$Education)[1] <- "Professional"
 
-sum(is.na(Credit_Demogs_merge_6))
+#Type of residence
+summary(Credit_Demogs_merge_3$Type.of.residence)
+levels(Credit_Demogs_merge_3$Type.of.residence)[1] <- "Rented"
+
+#Performance Tag
+summary(Credit_Demogs_merge_3$Performance.Tag.x)
+sum(is.na(Credit_Demogs_merge_3$Performance.Tag.x))
 
 colnames(Credit_Demogs_merge_6)[19] <- "Performance.Tag"
 
